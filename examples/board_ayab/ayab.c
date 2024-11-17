@@ -278,12 +278,24 @@ static void * avr_run_thread(void * param)
     // {v1, v2} encoding over 4 phases
     unsigned phase_map[4] = {0, 1, 3, 2};
 
-    // Phase overlaps 16 needles/solenoids (16*4 v1/v2 states)
+    // Phase has 64 states (16 needles/solenoids *4 v1/v2 states)
+    // Belt at position 1/9 is aligned on the left side with K/L, "regular"/"Shifted"
     unsigned encoder_phase;
     if (machine.belt_phase == REGULAR) {
-       encoder_phase = (unsigned)(machine.carriage.position * 4 + 24) % 64;
+       encoder_phase = (unsigned)((machine.carriage.position + 1) * 4) % 64;
     } else {
-       encoder_phase = (unsigned)(machine.carriage.position * 4 + 56) % 64;
+       encoder_phase = (unsigned)((machine.carriage.position + 9) * 4) % 64;
+    }
+    if (machine.carriage.type == LACE) {
+        // Lace center is shifted by 4 to the left
+        encoder_phase += -4 * 4;
+    } else if (machine.carriage.type == GARTER) {
+        // Garter center has BP inverted (8 needles offset)
+        encoder_phase += 8 * 4;
+    }
+    // Adjust encoder_phase when starting from the right to (position+1) * 4 -1
+    if (machine.start_side == RIGHT) {
+        encoder_phase+=3;
     }
 
     char needles[machine.num_needles];
@@ -333,6 +345,8 @@ static void * avr_run_thread(void * param)
                         fprintf(stderr, "Unexpect event from graphic thread\n");
                         break;
                 }
+                encoder_phase = new_phase;
+
                 machine.hall_left = 1650;
                 machine.hall_right = 1650;
                 uint16_t solenoid_states = (shield.mcp23008[1].reg[MCP23008_REG_OLAT] << 8) + shield.mcp23008[0].reg[MCP23008_REG_OLAT]; 
@@ -373,23 +387,23 @@ static void * avr_run_thread(void * param)
                         break;
                     case GARTER:
                         switch (machine.carriage.position) {
-                            case -13:
-                            case  13:
+                            case -12:
+                            case  12:
                                 machine.hall_left = 100; //TBC South
                                 break;
-                            case -11:
-                            case  11:
+                            case -10:
+                            case  10:
                                 machine.hall_left = 2200; //TBC North
                                 break;
-                            case 186:
-                            case 212:
+                            case 187:
+                            case 211:
                                 machine.hall_right = 100; //TBC South
                                 if(machine.type == KH910) { // Shield error
                                     machine.hall_right = 1650; // HighZ
                                 }
                                 break;
-                            case 188:
-                            case 210:
+                            case 189:
+                            case 209:
                                 machine.hall_right = 2200; //TBC North
                                 if(machine.type == KH910) { // Shield error
                                     machine.hall_right = 0; // Digital low
@@ -431,7 +445,7 @@ static void * avr_run_thread(void * param)
                     switch (machine.type) {
                         case KH270:
                             solenoid_index = selected_needle + 4;
-                            // On KH270 solenoid to needle mapping is direction-dependent
+                            // K270 solenoid to needle mapping is direction-dependent
                             if (event == CARRIAGE_LEFT) {
                                 solenoid_index += machine.num_solenoids >> 1;
                             }
@@ -444,6 +458,10 @@ static void * avr_run_thread(void * param)
                             if (machine.belt_phase == SHIFTED) {
                                 solenoid_index += machine.num_solenoids >> 1;
                             }
+                            // LACE solenoid to needle mapping is direction-dependent
+                            if ((machine.carriage.type == LACE) && (event == CARRIAGE_LEFT)) {
+                                solenoid_index += machine.num_solenoids >> 1;
+                            }
                             solenoid_index = solenoid_index % machine.num_solenoids; 
                             break;
                     }
@@ -452,7 +470,6 @@ static void * avr_run_thread(void * param)
                     solenoid_update = 1;
                 }
 
-                encoder_phase = new_phase;
                 avr_raise_irq(encoder_v2.irq + IRQ_BUTTON_OUT, (phase_map[encoder_phase % 4] & 1) ? 1 : 0);
                 avr_raise_irq(encoder_v1.irq + IRQ_BUTTON_OUT, (phase_map[encoder_phase % 4] & 2) ? 1 : 0);
                 avr_raise_irq(encoder_beltPhase.irq + IRQ_BUTTON_OUT, (encoder_phase & 32) ? 1 : 0);
