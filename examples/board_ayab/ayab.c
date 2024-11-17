@@ -50,6 +50,7 @@ int loglevel = LOG_ERROR;
 int gdb = 0;
 int gdb_port = 1234;
 int trace_pc = 0;
+int trace_machine = 0;
 int vcd_enabled = 0;
 
 uart_pty_t uart_pty;
@@ -90,6 +91,7 @@ display_usage(
 	 "       [--output|-o <file>] VCD file to save signal traces\n"
 	 "       [--start-vcd|-s     Start VCD output from reset\n"
 	 "       [--pc-trace|-p      Add PC to VCD traces\n"
+     "       [--machine-trace]   Add Machine states to VCD traces\n"
      "       [--machine <machine>]   Select KH910/KH930/KH270 machine (default=KH910)\n"
      "       [--carriage <carriage>] Select K/L/G carriage (default=K)\n"
      "       [--beltphase <phase>]   Select Regular/Shifted (default=Regular)\n"
@@ -142,6 +144,8 @@ parse_arguments(int argc, char *argv[])
 		} else if (!strcmp(argv[pi], "-p") ||
 				   !strcmp(argv[pi], "--pc-trace")) {
             trace_pc = 1;
+		} else if (!strcmp(argv[pi], "--machine-trace")) {
+            trace_machine = 1;
 		} else if (!strcmp(argv[pi], "--machine")) {
 			if (pi < argc-1) {
                 if (!strcmp(argv[++pi], "KH910")) {
@@ -235,19 +239,33 @@ static void * avr_run_thread(void * param)
     avr_cycle_count_t lastChange = avr->cycle;
     int *run = (int *)param;
     avr_irq_t vcd_irq_pc;
+    avr_irq_t vcd_irq_carriage_position;
+    avr_irq_t vcd_irq_solenoids_state;
+    avr_irq_t vcd_irq_hall_left, vcd_irq_hall_right;
     
 #if AVR_STACK_WATCH
     uint16_t SP_min = (avr->data[R_SPH]<<8) +  avr->data[R_SPL];
 #endif
 
     // Initialize VCD for PC-only traces
-    if (!avr->vcd && trace_pc) {
+    if (!avr->vcd && (trace_pc || trace_machine)) {
         avr->vcd = malloc(sizeof(*avr->vcd));
         avr_vcd_init(avr,
             firmware.tracename[0] ? firmware.tracename: "simavr.vcd",
             avr->vcd,
             100000 /* usec */
         );
+    }
+
+    // Add machine data to vcd file
+    if (trace_machine) {
+        avr_vcd_add_signal(avr->vcd, encoder_v1.irq + IRQ_BUTTON_OUT, 1, "v1");
+        avr_vcd_add_signal(avr->vcd, encoder_v2.irq + IRQ_BUTTON_OUT, 1, "v2");
+        avr_vcd_add_signal(avr->vcd, encoder_beltPhase.irq + IRQ_BUTTON_OUT, 1, "BP");
+        avr_vcd_add_signal(avr->vcd, &vcd_irq_hall_left, 16, "EOL");
+        avr_vcd_add_signal(avr->vcd, &vcd_irq_hall_right, 16, "EOR");
+        avr_vcd_add_signal(avr->vcd, &vcd_irq_carriage_position, 16, "Position");
+        avr_vcd_add_signal(avr->vcd, &vcd_irq_solenoids_state, 16, "Solenoids");
     }
 
     // Add Program Counter (PC) to vcd file
@@ -464,6 +482,14 @@ static void * avr_run_thread(void * param)
                         fprintf(stderr, "-> %.*s\n", half_num_needles, needles+half_num_needles);
                         fprintf(stderr, "   %.*s\n", half_num_needles, info_buffer+half_num_needles);
                     }
+                }
+
+                // Trigger IRQ for machine internal data
+                if (trace_machine) {
+                    avr_raise_irq(&vcd_irq_hall_left, machine.hall_left);
+                    avr_raise_irq(&vcd_irq_hall_right, machine.hall_right);
+                    avr_raise_irq(&vcd_irq_carriage_position, machine.carriage.position);
+                    avr_raise_irq(&vcd_irq_solenoids_state, solenoid_states);
                 }
             }
         }
