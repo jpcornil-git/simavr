@@ -167,7 +167,7 @@ parse_arguments(int argc, char *argv[])
                 } else if (!strcmp(argv[pi], "L")) {
                     machine.carriage.type = LACE;
                 } else if (!strcmp(argv[pi], "G")) {
-                    machine.carriage.type = GARTNER;
+                    machine.carriage.type = GARTER;
                 } else {
                     display_usage(basename(argv[0]));
                 }
@@ -371,7 +371,7 @@ static void * avr_run_thread(void * param)
                             select_offset = -12;
                         }
                         break;
-                    case GARTNER:
+                    case GARTER:
                         switch (machine.carriage.position) {
                             case -13:
                             case  13:

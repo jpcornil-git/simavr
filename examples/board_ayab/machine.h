@@ -1,4 +1,3 @@
-
 #ifndef __AYAB_MACHINE__
 #define __AYAB_MACHINE__
 
@@ -8,7 +7,7 @@
 
 enum side {LEFT, RIGHT};
 enum machine_type {KH910, KH930, KH270};
-enum carriage_type {KNIT, LACE, GARTNER, KNIT270};
+enum carriage_type {KNIT, LACE, GARTER, KNIT270};
 enum belt_phase_type {REGULAR, SHIFTED};
 
 typedef struct {
