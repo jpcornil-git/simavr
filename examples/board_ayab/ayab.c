@@ -429,9 +429,9 @@ static void * avr_run_thread(void * param)
                                 break;
                         }
                         // Handle solenoids
-                        select_offset = 12;
+                        select_offset = 15;
                         if (event == CARRIAGE_RIGHT) {
-                            select_offset = -12;
+                            select_offset = -15;
                         }
                         break;
                     default:
